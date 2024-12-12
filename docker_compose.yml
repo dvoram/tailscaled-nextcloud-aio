@@ -1,0 +1,85 @@
+name: nextcloud
+
+services:
+  nextcloud-aio-mastercontainer:
+    image: nextcloud/all-in-one:latest  # TODO: Consider setting a specific version in an env variable.
+    init: true
+    restart: always
+    container_name: nextcloud-aio-mastercontainer # This line cannot be changed.
+    volumes:
+      - nextcloud_aio_mastercontainer:/mnt/docker-aio-config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - nextcloud-aio
+    ports:
+      - 0.0.0.0:8080:8080
+    environment:
+      APACHE_PORT: 11000
+      APACHE_IP_BINDING: 127.0.0.1
+      SKIP_DOMAIN_VALIDATION: false
+      NEXTCLOUD_DATADIR: ${NEXTCLOUD_DATA_DIR}
+  nextcloud-caddy: 
+    image: caddy:alpine # TODO: Consider setting a specific version in an env variable.
+    restart: unless-stopped
+    environment:
+      NC_DOMAIN: ${TS_HOSTNAME}.${TS_TAILNET_NAME}
+    volumes:
+      - type: bind
+        source: ${CADDYFILE_PATH}
+        target: /etc/caddy/Caddyfile
+      - type: volume
+        source: nextcloud_caddy_certs
+        target: /certs
+      - type: volume
+        source: nextcloud_caddy_data
+        target: /data
+      - type: volume
+        source: nextcloud_caddy_config
+        target: /config
+      - type: volume
+        source: nextcloud_tailscale_sock
+        target: /var/run/tailscale/ # Mount the volume for /var/run/tailscale/tailscale.sock.
+        read_only: true
+    network_mode: service:nextcloud-tailscale
+  nextcloud-tailscale:
+    image: tailscale/tailscale:latest  # TODO: Consider setting a specific version in an env variable.
+    environment:
+      TS_HOSTNAME: ${TS_HOSTNAME}
+      TS_AUTH_KEY: ${TS_AUTH_KEY}
+      TS_EXTRA_ARGS: --advertise-tags=tag:${TS_HOSTNAME} # Tags are required when using OAuth client.
+    init: true
+    restart: unless-stopped
+    volumes:
+      - /dev/net/tun:/dev/net/tun
+      - type: volume
+        source: ${TS_CONFIG_DIR}  # This is needed to keep machine name after service restart.
+        target: /var/lib/tailscale
+      - type: volume
+        source: nextcloud_tailscale_sock
+        target: /tmp # Mounting the entire /tmp folder to access tailscale.sock.
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    networks:
+      - nextcloud-aio
+volumes:
+  nextcloud_aio_mastercontainer:
+    name: nextcloud_aio_mastercontainer # This line cannot be changed.
+  nextcloud_caddy_certs:
+    name: nextcloud_caddy_certs
+  nextcloud_caddy_data:
+    name: nextcloud_caddy_data
+  nextcloud_caddy_config:
+    name: nextcloud_caddy_config
+  nextcloud_tailscale:
+    name: nextcloud_tailscale
+  nextcloud_tailscale_sock:
+    name: nextcloud_tailscale_sock
+networks:
+  nextcloud-aio:
+    name: nextcloud-aio
+    driver: bridge
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.driver.mtu: "9001" # Jumbo Frame
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1" # Harden aio
