@@ -47,11 +47,12 @@ services:
       TS_HOSTNAME: ${TS_HOSTNAME}
       TS_AUTH_KEY: ${TS_AUTH_KEY}
       TS_EXTRA_ARGS: --advertise-tags=tag:${TS_HOSTNAME} # Tags are required when using OAuth client.
+      TS_STATE_DIR: /var/lib/tailscale
     init: true
     restart: unless-stopped
     volumes:
       - /dev/net/tun:/dev/net/tun
-      - type: volume
+      - type: bind
         source: ${TS_CONFIG_DIR}  # This is needed to keep machine name after service restart.
         target: /var/lib/tailscale
       - type: volume
@@ -71,8 +72,6 @@ volumes:
     name: nextcloud_caddy_data
   nextcloud_caddy_config:
     name: nextcloud_caddy_config
-  nextcloud_tailscale:
-    name: nextcloud_tailscale
   nextcloud_tailscale_sock:
     name: nextcloud_tailscale_sock
 networks:
